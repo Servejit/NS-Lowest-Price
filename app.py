@@ -1,186 +1,103 @@
-# ---------------------------------------------------
-# INSTALL (Run once)
-# pip install streamlit pandas
-# ---------------------------------------------------
-
 import streamlit as st
 import re
-import gc
-
-# =====================================================
-# PAGE SETUP
-# =====================================================
 
 st.set_page_config(page_title="Lowest Price Compare", layout="wide")
 
-st.title("📊 Lowest Price Compare Tool")
+st.title("⚡ Fast Lowest Price Compare Tool")
 
 # =====================================================
-# SESSION STATE
+# CACHE FUNCTION (MAJOR SPEED BOOST)
 # =====================================================
 
-if "final_text" not in st.session_state:
-    st.session_state.final_text = ""
-
-if "case3_text" not in st.session_state:
-    st.session_state.case3_text = ""
-
-# =====================================================
-# CORE LOGIC (SAME AS YOUR CODE)
-# =====================================================
-
+@st.cache_data(show_spinner=False)
 def extract_low_prices(raw_text):
 
     data = {}
 
-    for line in raw_text.splitlines():
+    lines = raw_text.splitlines()
 
-        line = line.strip()
+    for line in lines:
 
         if not line:
             continue
 
-        clean = re.sub(r"[^\x00-\x7F]+", " ", line)
-        clean = clean.replace("*", "").strip()
+        line = line.replace("*", "")
 
-        stock_match = re.match(r"([A-Z0-9\-]+)\s*,?", clean)
+        m = re.match(r"([A-Z0-9\-]+)", line)
 
-        if not stock_match:
+        if not m:
             continue
 
-        stock = stock_match.group(1)
+        stock = m.group(1)
 
-        numbers = re.findall(r'"([\d]+\.\d+)"|(\d+\.\d+)', clean)
+        nums = re.findall(r'\d+\.\d+', line)
 
-        prices = []
-
-        for a, b in numbers:
-
-            val = float(a or b)
-
-            if 1 <= val <= 100000:
-                prices.append(val)
-
-        if not prices:
+        if not nums:
             continue
 
-        low = round(min(prices), 2)
+        low = min(map(float, nums))
 
-        data[stock] = min(data.get(stock, low), low)
+        if stock in data:
+            if low < data[stock]:
+                data[stock] = low
+        else:
+            data[stock] = low
 
     return data
 
 
 # =====================================================
-# UI INPUT
+# INPUT
 # =====================================================
 
-case1 = st.text_area(
-    "📥 Case 1 Raw Data",
-    height=250
-)
+case1 = st.text_area("Case 1", height=250)
 
-case2 = st.text_area(
-    "📥 Case 2 Raw Data",
-    height=250
-)
+case2 = st.text_area("Case 2", height=250)
+
 
 # =====================================================
-# BUTTONS
+# COMPARE BUTTON
 # =====================================================
 
-col1, col2, col3 = st.columns(3)
-
-# Compare Button
-if col1.button("Compare & Get Lowest Prices"):
+if st.button("Compare"):
 
     case1_data = extract_low_prices(case1)
-    case2_data = extract_low_prices(case2)
 
-    lines = []
+    case2_data = extract_low_prices(case2)
 
     result = "{\n"
 
-    for stock in sorted(case1_data.keys()):
+    for stock in case1_data:
 
         low1 = case1_data[stock]
-        low2 = case2_data.get(stock)
 
-        final_low = low1 if low2 is None else min(low1, low2)
+        low2 = case2_data.get(stock, low1)
 
-        line = f'    "{stock}.NS": {final_low:.2f},'
+        final = low1 if low1 < low2 else low2
 
-        result += line + "\n"
-
-        lines.append(line)
+        result += f' "{stock}.NS": {final:.2f},\n'
 
     result += "}"
 
-    
-    st.session_state.final_text = "\n".join(lines)
-
-    st.code(result, language="python")
-
-
-# Copy Button
-if col2.button("📋 Copy Case 1+2 List"):
-
-    if st.session_state.final_text:
-
-        st.code(st.session_state.final_text)
-
-        st.success("Copy above text manually (Streamlit security limitation)")
-
-
-# Clear Button
-if col3.button("🧹 Clear All"):
-
-    st.session_state.final_text = ""
-    st.session_state.case3_text = ""
-
-    st.rerun()
+    st.code(result)
 
 
 # =====================================================
-# CASE 3
+# CASE 3 FAST
 # =====================================================
 
-st.markdown("---")
+case3 = st.text_area("Case 3", height=200)
 
-case3 = st.text_area(
-    "🔁 Case 3 – Convert Price List to Symbols Only",
-    height=200
-)
-
-col4, col5 = st.columns(2)
-
-
-if col4.button("🔄 Convert Case 3"):
+if st.button("Convert Case 3"):
 
     symbols = re.findall(r'"([A-Z0-9\-]+\.NS)"', case3)
 
     if symbols:
 
-        st.session_state.case3_text = ", ".join(f'"{s}"' for s in symbols)
+        result = ", ".join(f'"{s}"' for s in symbols)
 
-        st.code(st.session_state.case3_text)
+        st.code(result)
 
     else:
 
-        st.warning("No valid .NS symbols found")
-
-
-if col5.button("📋 Copy Case 3 Output"):
-
-    if st.session_state.case3_text:
-
-        st.code(st.session_state.case3_text)
-
-        st.success("Copy above text manually")
-
-
-# =====================================================
-# MEMORY CLEAN
-# =====================================================
-
-gc.collect()
+        st.warning("No symbols found")
