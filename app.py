@@ -1,81 +1,78 @@
 import streamlit as st
-import re
 
-st.set_page_config(page_title="Lowest Price Compare", layout="wide")
+st.set_page_config(page_title="Fast Compare", layout="wide")
 
-st.title("⚡ Fast Lowest Price Compare Tool")
+st.title("⚡ Instant Lowest Price Compare")
 
 # =====================================================
-# CACHE FUNCTION (MAJOR SPEED BOOST)
+# FAST FUNCTION (NO REGEX)
 # =====================================================
 
-@st.cache_data(show_spinner=False)
-def extract_low_prices(raw_text):
+def fast_extract(text):
 
     data = {}
 
-    lines = raw_text.splitlines()
+    for line in text.split("\n"):
 
-    for line in lines:
-
-        if not line:
+        if "." not in line:
             continue
 
-        line = line.replace("*", "")
+        parts = line.replace('"',"").replace(","," ").split()
 
-        m = re.match(r"([A-Z0-9\-]+)", line)
-
-        if not m:
+        if len(parts) < 2:
             continue
 
-        stock = m.group(1)
+        stock = parts[0].replace(".NS","")
 
-        nums = re.findall(r'\d+\.\d+', line)
+        try:
+            prices = [float(x) for x in parts[1:] if "." in x]
 
-        if not nums:
-            continue
+            if prices:
 
-        low = min(map(float, nums))
+                low = min(prices)
 
-        if stock in data:
-            if low < data[stock]:
-                data[stock] = low
-        else:
-            data[stock] = low
+                if stock in data:
+
+                    if low < data[stock]:
+
+                        data[stock] = low
+
+                else:
+
+                    data[stock] = low
+
+        except:
+            pass
 
     return data
 
 
 # =====================================================
-# INPUT
+# INPUT BOXES
 # =====================================================
 
-case1 = st.text_area("Case 1", height=250)
+case1 = st.text_area("Paste Case 1", height=250)
 
-case2 = st.text_area("Case 2", height=250)
+case2 = st.text_area("Paste Case 2", height=250)
 
 
 # =====================================================
 # COMPARE BUTTON
 # =====================================================
 
-if st.button("Compare"):
+if st.button("Compare Now"):
 
-    case1_data = extract_low_prices(case1)
+    d1 = fast_extract(case1)
 
-    case2_data = extract_low_prices(case2)
+    d2 = fast_extract(case2)
 
     result = "{\n"
 
-    for stock in case1_data:
+    for stock in d1:
 
-        low1 = case1_data[stock]
+        low = min(d1[stock], d2.get(stock, d1[stock]))
 
-        low2 = case2_data.get(stock, low1)
-
-        final = low1 if low1 < low2 else low2
-
-        result += f' "{stock}.NS": {final:.2f},\n'
+        result += f'"{stock}.NS": {low:.2f},\n'
 
     result += "}"
 
@@ -83,21 +80,21 @@ if st.button("Compare"):
 
 
 # =====================================================
-# CASE 3 FAST
+# CASE 3 CONVERTER
 # =====================================================
 
-case3 = st.text_area("Case 3", height=200)
+case3 = st.text_area("Paste Case 3", height=200)
 
 if st.button("Convert Case 3"):
 
-    symbols = re.findall(r'"([A-Z0-9\-]+\.NS)"', case3)
+    symbols = []
 
-    if symbols:
+    for line in case3.split("\n"):
 
-        result = ", ".join(f'"{s}"' for s in symbols)
+        if ".NS" in line:
 
-        st.code(result)
+            sym = line.split('"')[1]
 
-    else:
+            symbols.append(f'"{sym}"')
 
-        st.warning("No symbols found")
+    st.code(", ".join(symbols))
