@@ -199,7 +199,7 @@ if col3.button("🔄 Convert Case 3"):
 
     else:
 
-        text = ", ".join(f'"{s}"' for s in symbols)
+        text = ", ".join(f'"{s}' for s in symbols)
 
         st.session_state.case3_text = text
 
