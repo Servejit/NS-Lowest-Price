@@ -1,79 +1,220 @@
+# =====================================================
+# INSTALL REQUIREMENTS
+# streamlit
+# pandas
+# =====================================================
+
 import streamlit as st
+import re
+import gc
 
-st.set_page_config(page_title="Fast Compare Pro ⚡", layout="wide")
+# =====================================================
+# GLOBAL STATE
+# =====================================================
 
-st.title("⚡ Fast Compare Pro")
+if "final_text" not in st.session_state:
+    st.session_state.final_text = ""
 
-# ---------------- CACHE FUNCTION ----------------
-@st.cache_data
-def parse_text(text):
-    result = {}
-    for line in text.splitlines():
-        if ".NS" in line:
-            parts = line.replace('"','').replace(',',' ').split()
-            symbol = parts[0].replace(".NS","")
-            prices = [float(x) for x in parts[1:] if "." in x]
-            if prices:
-                result[symbol] = min(prices)
-    return result
+if "case3_text" not in st.session_state:
+    st.session_state.case3_text = ""
 
 
-# ---------------- LAYOUT ----------------
+# =====================================================
+# CORE LOGIC (CASE 1 & 2)
+# =====================================================
+
+def extract_low_prices(raw_text):
+
+    data = {}
+
+    for line in raw_text.splitlines():
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        clean = re.sub(r"[^\x00-\x7F]+", " ", line)
+        clean = clean.replace("*", "").strip()
+
+        stock_match = re.match(r"([A-Z0-9\-]+)\s*,?", clean)
+
+        if not stock_match:
+            continue
+
+        stock = stock_match.group(1)
+
+        numbers = re.findall(r'"([\d]+\.\d+)"|(\d+\.\d+)', clean)
+
+        prices = []
+
+        for a, b in numbers:
+
+            val = float(a or b)
+
+            if 1 <= val <= 100000:
+                prices.append(val)
+
+        if not prices:
+            continue
+
+        low = round(min(prices), 2)
+
+        data[stock] = min(data.get(stock, low), low)
+
+    return data
+
+
+# =====================================================
+# PAGE UI
+# =====================================================
+
+st.set_page_config(page_title="Compare Lowest Prices", layout="wide")
+
+st.title("📊 Compare & Get Lowest Prices")
+
+
+# =====================================================
+# CLEAR BUTTON
+# =====================================================
+
+if st.button("🧹 Clear Previous Data"):
+
+    st.session_state.final_text = ""
+    st.session_state.case3_text = ""
+
+    st.success("Old data cleared")
+
+    gc.collect()
+
+
+
+# =====================================================
+# CASE 1 INPUT
+# =====================================================
+
+st.subheader("📥 Case 1 Raw Data")
+
+case1 = st.text_area(
+    "",
+    height=260,
+    key="case1"
+)
+
+
+
+# =====================================================
+# CASE 2 INPUT
+# =====================================================
+
+st.subheader("📥 Case 2 Raw Data")
+
+case2 = st.text_area(
+    "",
+    height=260,
+    key="case2"
+)
+
+
+
+# =====================================================
+# COMPARE BUTTON
+# =====================================================
+
 col1, col2 = st.columns(2)
 
-with col1:
-    case1 = st.text_area("Case 1", height=250)
+if col1.button("Compare & Get Lowest Prices"):
 
-with col2:
-    case2 = st.text_area("Case 2", height=250)
+    case1_data = extract_low_prices(case1)
+    case2_data = extract_low_prices(case2)
 
+    lines = []
 
-# ---------------- AUTO COMPARE ----------------
-if case1 and case2:
+    output = "{\n"
 
-    d1 = parse_text(case1)
-    d2 = parse_text(case2)
+    for stock in sorted(case1_data.keys()):
 
-    output_lines = [
-        f'"{s}.NS": {min(d1[s], d2.get(s, d1[s])):.2f}'
-        for s in d1
-    ]
+        low1 = case1_data[stock]
+        low2 = case2_data.get(stock)
 
-    output = "{\n" + ",\n".join(output_lines) + "\n}"
+        final_low = low1 if low2 is None else min(low1, low2)
 
-    st.subheader("✅ Result")
+        line = f'    "{stock}.NS": {final_low:.2f},'
 
-    st.code(output, language="python")
+        output += line + "\n"
 
-    st.download_button(
-        "📥 Download Result",
-        output,
-        file_name="compare.txt"
-    )
+        lines.append(line)
 
-    st.copy_to_clipboard = st.code(output)
+    output += "}"
+
+    st.session_state.final_text = "\n".join(lines)
+
+    st.code(output)
 
 
 
-# ---------------- CONVERT ----------------
-st.divider()
+# =====================================================
+# COPY BUTTON
+# =====================================================
 
-case3 = st.text_area("Convert Symbols", height=200)
+if col2.button("📋 Copy Case 1+2 List"):
 
-if case3:
+    if st.session_state.final_text:
 
-    converted = ", ".join(
-        f'"{line.split(chr(34))[1]}"'
-        for line in case3.splitlines()
-        if ".NS" in line
-    )
+        st.code(st.session_state.final_text)
 
-    st.subheader("✅ Converted")
+        st.success("Copy manually from above")
 
-    st.code(converted, language="python")
 
-    st.download_button(
-        "📥 Download Symbols",
-        converted,
-        file_name="symbols.txt"
-    )
+
+# =====================================================
+# CASE 3
+# =====================================================
+
+st.markdown("---")
+
+st.subheader("🔁 Case 3 – Convert Price List to Symbols Only")
+
+case3 = st.text_area(
+    "",
+    height=220,
+    key="case3"
+)
+
+
+
+# =====================================================
+# CONVERT BUTTON
+# =====================================================
+
+col3, col4 = st.columns(2)
+
+if col3.button("🔄 Convert Case 3"):
+
+    symbols = re.findall(r'"([A-Z0-9\-]+\.NS)"', case3)
+
+    if not symbols:
+
+        st.warning("No valid .NS symbols found")
+
+    else:
+
+        text = ", ".join(f'"{s}"' for s in symbols)
+
+        st.session_state.case3_text = text
+
+        st.code(text)
+
+
+
+# =====================================================
+# COPY CASE 3
+# =====================================================
+
+if col4.button("📋 Copy Case 3 Output"):
+
+    if st.session_state.case3_text:
+
+        st.code(st.session_state.case3_text)
+
+        st.success("Copy manually from above")
